@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Setup Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '^1.16'
+
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
+      run: go build -o release/aws-service-limits-${{ matrix.goos }}-${{ matrix.goarch }} .
+
+    - name: Archive production artifacts 
+      uses: actions/upload-artifact@v2
+      with:
+        name: aws-service-limits-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: |
+          release/aws-service-limits-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Download artifacts
+      uses: actions/download-artifact@v2
+      with:
+        path: release
+
+    - name: Release
+      uses: gh-actions/gh-release@master
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        assets: release/*
+
