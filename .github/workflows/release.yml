@@ -3,10 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - ${{ env.RELEASE_TAG }}*
-
-env:
-  RELEASE_TAG: v # tag prefix
+      - 'v*'
 
 jobs:
 
@@ -26,7 +23,7 @@ jobs:
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
-      run: go build -o release/aws-service-limits.$GOOS-$GOARCH
+      run: go build -o "release/aws-service-limits.$GOOS-$GOARCH"
 
     - uses: actions/upload-artifact@v2
       with:
