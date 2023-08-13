@@ -13,7 +13,8 @@ This tool fetches and displays service quotas for AWS services.
 ## Installation
 
 ```bash
-go get github.com/sjramblings/aws-service-limits
+curl -L -o aws-service-limits https://github.com/sjramblings/aws-service-limits/releases/download/v0.1.0/aws-service-limits.linux-amd64
+
 ```
 
 ## Basic Usage
