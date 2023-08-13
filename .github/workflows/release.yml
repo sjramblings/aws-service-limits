@@ -18,7 +18,7 @@ jobs:
         goarch: [amd64]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       
     - name: Build
       env:
@@ -26,7 +26,7 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
       run: go build -o "release/aws-service-limits.$GOOS-$GOARCH"
 
-    - uses: actions/upload-artifact@v2
+    - uses: actions/upload-artifact@v3
       with:
         name: aws-service-limits
         path: release
@@ -40,7 +40,7 @@ jobs:
 
     steps:
     
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - uses: actions/download-artifact@v2
       with:
