@@ -38,11 +38,13 @@ Lists all the services supported by the AWS Service Quota API:
 
 ## Commandline Flags
 
+```bash
 --timeframe: Timeframe for the CloudWatch query in hours. Options: 1, 24, 48, 72, etc. Default is 1 hour.
 --servicecode: The AWS Service Code to query. Default is 'ec2'.
 --format: Output format. Options: table (default), csv, markdown, json.
 --exclude-na: Exclude items with a usage value of 'Not Available'.
 --list-services: List all the services supported by the AWS Service Quota API and exit.
+```
 
 ## Contributing
 
