@@ -45,8 +45,8 @@ $ aws-service-limits --servicecode lambda
 Completed 0/2 tasks
 All tasks completed!
 Account ID   Region          Service              Global Value           Usage           Quota Name                                                                      
-154145869091 ap-southeast-2  lambda               false  1000            0               Concurrent executions                                                           
-154145869091 ap-southeast-2  lambda               false  75 Gigabytes    Not Available   Function and layer storage    
+123456789012 ap-southeast-2  lambda               false  1000            0               Concurrent executions                                                           
+123456789012 ap-southeast-2  lambda               false  75 Gigabytes    Not Available   Function and layer storage    
 ```
 
 List all the services supported by the AWS Service Quota API:
@@ -69,8 +69,8 @@ $ aws-service-limits --servicecode lambda -format csv
 Completed 1/2 tasks
 All tasks completed!
 Account ID,Region,Service Code,Quota Name,Value,Usage,Global
-154145869091,ap-southeast-2,lambda,Concurrent executions,1000,0,false
-154145869091,ap-southeast-2,lambda,Function and layer storage,75 Gigabytes,Not Available,false
+123456789012,ap-southeast-2,lambda,Concurrent executions,1000,0,false
+123456789012,ap-southeast-2,lambda,Function and layer storage,75 Gigabytes,Not Available,false
 ```
 
 Output to Markdown
@@ -81,8 +81,8 @@ Completed 1/2 tasks
 All tasks completed!
 | Account ID | Region | Service Code | Global | Value | Usage | Quota Name |
 |------------|--------|--------------|-------|-------|-------|------------|
-| 154145869091 | ap-southeast-2 | lambda | false | 1000 | 0 | Concurrent executions |
-| 154145869091 | ap-southeast-2 | lambda | false | 75 Gigabytes | Not Available | Function and layer storage |
+| 123456789012 | ap-southeast-2 | lambda | false | 1000 | 0 | Concurrent executions |
+| 123456789012 | ap-southeast-2 | lambda | false | 75 Gigabytes | Not Available | Function and layer storage |
 ```
 
 ## Commandline Flags
