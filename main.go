@@ -2,16 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"strings"
-	"time"
+	"encoding/csv"
+	"encoding/json"
 	"flag"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
-	"sort"
-	"os"
-	"encoding/json"
-	"encoding/csv"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -23,23 +23,24 @@ import (
 )
 
 const (
-	accountWidth = 15
-	regionWidth  = 15
-	serviceWidth = 15
-	nameWidth    = 80
-	valueWidth   = 6
-	usageWidth   = 6
-	maxRetries   = 5
+	accountWidth     = 12
+	regionWidth      = 15
+	serviceWidth     = 20
+	globalQuotaWidth = 6
+	valueWidth       = 15
+	usageWidth       = 15
+	nameWidth        = 80
+
+	maxRetries = 5
 )
 
 var (
-	timeframe int
-	servicecode string
-	cfg       aws.Config
-	outputFormat string
-	excludeNotAvailable	bool
-	listServices bool
-
+	timeframe           int
+	servicecode         string
+	cfg                 aws.Config
+	outputFormat        string
+	excludeNotAvailable bool
+	listServices        bool
 )
 
 func init() {
@@ -52,10 +53,10 @@ func init() {
 	// Bind the command-line flag to the outputFormat variable
 	flag.StringVar(&outputFormat, "format", "table", "Output format. Options: table, csv, markdown, json.")
 
-    // Add the command-line flag for excluding "Not Available" usage values
-    flag.BoolVar(&excludeNotAvailable, "exclude-na", false, "Exclude items with a usage value of 'Not Available'")
+	// Add the command-line flag for excluding "Not Available" usage values
+	flag.BoolVar(&excludeNotAvailable, "exclude-na", false, "Exclude items with a usage value of 'Not Available'")
 
-    // Add the command-line flag for listing all supported services
+	// Add the command-line flag for listing all supported services
 	flag.BoolVar(&listServices, "list-services", false, "List all the services supported by the AWS Service Quota API and exit.")
 
 	// Customize the default usage message
@@ -91,6 +92,7 @@ type QuotaInfo struct {
 	QuotaName   string
 	Value       string
 	Usage       string
+	GlobalQuota bool
 }
 
 func main() {
@@ -106,7 +108,7 @@ func main() {
 	input := &servicequotas.ListServiceQuotasInput{
 		ServiceCode: aws.String(servicecode),
 	}
-	
+
 	var wg sync.WaitGroup
 	var completedTasks int32
 	var totalTasks int32
@@ -119,7 +121,9 @@ func main() {
 
 	go func() {
 		for range progressTicker.C {
-			fmt.Printf("\rCompleted %d/%d tasks", atomic.LoadInt32(&completedTasks), totalTasks)
+			if !isOutputRedirected() {
+				fmt.Printf("\rCompleted %d/%d tasks", atomic.LoadInt32(&completedTasks), totalTasks)
+			}
 		}
 	}()
 
@@ -148,18 +152,20 @@ func main() {
 	}
 
 	wg.Wait()
-	fmt.Println("\nAll tasks completed!")
+	if !isOutputRedirected() {
+		fmt.Println("\nAll tasks completed!")
+	}
 
-    // Filter out quotaInfos with "Not Available" usage if the flag is set
-    if excludeNotAvailable {
-        var filteredQuotaInfos []QuotaInfo
-        for _, qi := range quotaInfos {
-            if qi.Usage != "Not Available" {
-                filteredQuotaInfos = append(filteredQuotaInfos, qi)
-            }
-        }
-        quotaInfos = filteredQuotaInfos
-    }
+	// Filter out quotaInfos with "Not Available" usage if the flag is set
+	if excludeNotAvailable {
+		var filteredQuotaInfos []QuotaInfo
+		for _, qi := range quotaInfos {
+			if qi.Usage != "Not Available" {
+				filteredQuotaInfos = append(filteredQuotaInfos, qi)
+			}
+		}
+		quotaInfos = filteredQuotaInfos
+	}
 
 	// Sort the quotaInfos slice based on QuotaName
 	sort.Slice(quotaInfos, func(i, j int) bool {
@@ -175,18 +181,20 @@ func main() {
 		fmt.Println(string(b))
 	} else if outputFormat == "csv" {
 		writer := csv.NewWriter(os.Stdout)
-		writer.Write([]string{"Account ID", "Region", "Service Code", "Quota Name", "Value", "Usage"})
+		writer.Write([]string{"Account ID", "Region", "Service Code", "Quota Name", "Value", "Usage", "Global"})
 		for _, qi := range quotaInfos {
-			writer.Write([]string{qi.AccountID, qi.Region, qi.ServiceCode, qi.QuotaName, qi.Value, qi.Usage})
+			globalQuotaStr := fmt.Sprintf("%t", qi.GlobalQuota) // Convert the boolean to string
+			writer.Write([]string{qi.AccountID, qi.Region, qi.ServiceCode, qi.QuotaName, qi.Value, qi.Usage, globalQuotaStr})
 		}
 		writer.Flush()
 	} else {
 		// Print the sorted quotaInfos
 		printHeader()
 		for _, qi := range quotaInfos {
-			printQuota(qi.AccountID, qi.Region, qi.ServiceCode, qi.QuotaName, qi.Value, qi.Usage)
+			globalQuotaStr := fmt.Sprintf("%t", qi.GlobalQuota) // Convert the boolean to string
+			printQuota(qi.AccountID, qi.Region, qi.ServiceCode, qi.QuotaName, qi.Value, qi.Usage, globalQuotaStr)
 		}
-	}	
+	}
 }
 
 func processQuota(quota sqTypes.ServiceQuota, quotaInfos *[]QuotaInfo, mu *sync.Mutex) {
@@ -194,11 +202,17 @@ func processQuota(quota sqTypes.ServiceQuota, quotaInfos *[]QuotaInfo, mu *sync.
 	parts := strings.Split(arn, ":")
 	region := parts[3]
 	accountID := parts[4]
+	unit := *quota.Unit
 	valueFloat := *quota.Value
 	valueInt := int(valueFloat)
 	serviceCode := *quota.ServiceCode
 	quotaCode := *quota.QuotaCode
 	valueStr := fmt.Sprintf("%d", valueInt)
+
+	// Check if the Unit value is present in the response
+	if unit != "None" {
+		valueStr = fmt.Sprintf("%s %s", valueStr, unit)
+	}
 
 	response, err := getUsageMetric(serviceCode, quotaCode)
 	if err != nil {
@@ -209,6 +223,7 @@ func processQuota(quota sqTypes.ServiceQuota, quotaInfos *[]QuotaInfo, mu *sync.
 	usage := "Not Available"
 	if response.Quota != nil && response.Quota.UsageMetric != nil {
 		metricNamespace := response.Quota.UsageMetric.MetricNamespace
+		metricName := response.Quota.UsageMetric.MetricName
 		metricDimensions := response.Quota.UsageMetric.MetricDimensions
 		metricStatisticRecommendation := response.Quota.UsageMetric.MetricStatisticRecommendation
 
@@ -217,13 +232,15 @@ func processQuota(quota sqTypes.ServiceQuota, quotaInfos *[]QuotaInfo, mu *sync.
 		service := metricDimensions["Service"]
 		typeValue := metricDimensions["Type"]
 
-		returnedUsage, err := getMetricStatistics(*metricNamespace, class, resource, service, typeValue, *metricStatisticRecommendation)
+		returnedUsage, err := getMetricStatistics(*metricNamespace, class, resource, service, typeValue, *metricName, *metricStatisticRecommendation)
 		if err != nil {
 			fmt.Println("Error retrieving metric statistics:", err.Error())
 		} else {
 			usage = fmt.Sprintf("%.0f", returnedUsage)
 		}
 	}
+
+	globalQuota := quota.GlobalQuota // Extract the GlobalQuota value
 
 	mu.Lock()
 	*quotaInfos = append(*quotaInfos, QuotaInfo{
@@ -233,11 +250,12 @@ func processQuota(quota sqTypes.ServiceQuota, quotaInfos *[]QuotaInfo, mu *sync.
 		QuotaName:   *quota.QuotaName,
 		Value:       valueStr,
 		Usage:       usage,
+		GlobalQuota: globalQuota, // Add the GlobalQuota field to the QuotaInfo struct
 	})
 	mu.Unlock()
 }
 
-func getMetricStatistics(namespace, class, resource, service, metricType, statistic string) (float64, error) {
+func getMetricStatistics(namespace, class, resource, service, metricType, metricName, statistic string) (float64, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		return 0, fmt.Errorf("configuration error, %v", err)
@@ -252,24 +270,35 @@ func getMetricStatistics(namespace, class, resource, service, metricType, statis
 		stat = types.StatisticAverage
 	case "Maximum":
 		stat = types.StatisticMaximum
-	// Add cases for other statistics as needed
+	case "Sum":
+		stat = types.StatisticSum
 	default:
 		return 0, fmt.Errorf("unsupported statistic: %s", statistic)
 	}
 
+	// Build the dimensions dynamically based on provided values
+	var dimensions []types.Dimension
+	if class != "" {
+		dimensions = append(dimensions, types.Dimension{Name: aws.String("Class"), Value: aws.String(class)})
+	}
+	if resource != "" {
+		dimensions = append(dimensions, types.Dimension{Name: aws.String("Resource"), Value: aws.String(resource)})
+	}
+	if service != "" {
+		dimensions = append(dimensions, types.Dimension{Name: aws.String("Service"), Value: aws.String(service)})
+	}
+	if metricType != "" {
+		dimensions = append(dimensions, types.Dimension{Name: aws.String("Type"), Value: aws.String(metricType)})
+	}
+
 	input := cloudwatch.GetMetricStatisticsInput{
-		Namespace: aws.String(namespace),
-		Dimensions: []types.Dimension{
-			{Name: aws.String("Class"), Value: aws.String(class)},
-			{Name: aws.String("Resource"), Value: aws.String(resource)},
-			{Name: aws.String("Service"), Value: aws.String(service)},
-			{Name: aws.String("Type"), Value: aws.String(metricType)},
-		},
+		Namespace:  aws.String(namespace),
+		Dimensions: dimensions,
 		StartTime:  aws.Time(time.Now().Add(-1 * time.Duration(timeframe) * time.Hour)),
 		EndTime:    aws.Time(time.Now()),
 		Period:     aws.Int32(60),
 		Statistics: []types.Statistic{stat},
-		MetricName: aws.String("ResourceCount"),
+		MetricName: aws.String(metricName),
 	}
 
 	result, err := client.GetMetricStatistics(context.TODO(), &input)
@@ -287,7 +316,8 @@ func getMetricStatistics(namespace, class, resource, service, metricType, statis
 		return *result.Datapoints[0].Average, nil
 	case types.StatisticMaximum:
 		return *result.Datapoints[0].Maximum, nil
-	// Add cases for other statistics as needed
+	case types.StatisticSum:
+		return *result.Datapoints[0].Sum, nil
 	default:
 		return 0, fmt.Errorf("unsupported statistic: %s", statistic)
 	}
@@ -295,71 +325,79 @@ func getMetricStatistics(namespace, class, resource, service, metricType, statis
 
 // Retrieve the UsageMetric for a given ServiceCode and QuotaCode
 func getUsageMetric(serviceCode, quotaCode string) (*servicequotas.GetAWSDefaultServiceQuotaOutput, error) {
-    // Load the AWS SDK config
-    cfg, err := config.LoadDefaultConfig(context.TODO())
-    if err != nil {
-        return nil, fmt.Errorf("configuration error: %v", err)
-    }
+	// Load the AWS SDK config
+	cfg, err := config.LoadDefaultConfig(context.TODO())
+	if err != nil {
+		return nil, fmt.Errorf("configuration error: %v", err)
+	}
 
-    // Create a new Service Quotas client
-    client := servicequotas.NewFromConfig(cfg)
+	// Create a new Service Quotas client
+	client := servicequotas.NewFromConfig(cfg)
 
-    // Prepare the input for the GetAWSDefaultServiceQuota API call
-    input := &servicequotas.GetAWSDefaultServiceQuotaInput{
-        ServiceCode: aws.String(serviceCode),
-        QuotaCode:   aws.String(quotaCode),
-    }
+	// Prepare the input for the GetAWSDefaultServiceQuota API call
+	input := &servicequotas.GetAWSDefaultServiceQuotaInput{
+		ServiceCode: aws.String(serviceCode),
+		QuotaCode:   aws.String(quotaCode),
+	}
 
-    var result *servicequotas.GetAWSDefaultServiceQuotaOutput
+	var result *servicequotas.GetAWSDefaultServiceQuotaOutput
 
-    for retries := 0; retries < maxRetries; retries++ {
-        result, err = client.GetAWSDefaultServiceQuota(context.TODO(), input)
-        if err != nil {
-            // Check for TooManyRequestsException and back off if necessary
-            if strings.Contains(err.Error(), "TooManyRequestsException") {
-                backOffDuration := time.Duration((retries + 1) * (retries + 1)) * time.Second
-                time.Sleep(backOffDuration)
-                continue
-            } else {
-                return nil, err
-            }
-        } else {
-            break
-        }
-    }
+	for retries := 0; retries < maxRetries; retries++ {
+		result, err = client.GetAWSDefaultServiceQuota(context.TODO(), input)
+		if err != nil {
+			// Check for TooManyRequestsException and back off if necessary
+			if strings.Contains(err.Error(), "TooManyRequestsException") {
+				backOffDuration := time.Duration((retries+1)*(retries+1)) * time.Second
+				time.Sleep(backOffDuration)
+				continue
+			} else {
+				return nil, err
+			}
+		} else {
+			break
+		}
+	}
 
-    return result, err
+	// Print result
+	// b, err := json.MarshalIndent(result, "", "  ")
+	// if err != nil {
+	//   return nil, err
+	// }
+	// fmt.Println(string(b))
+
+	return result, err
 }
 
 func printHeader() {
 	switch outputFormat {
 	case "csv":
-		fmt.Println("Account ID,Region,Service Code,Quota Name,Value,Usage")
+		fmt.Println("Account ID,Region,Service Code,Global,Value,Usage,Quota Name")
 	case "markdown":
-		fmt.Println("| Account ID | Region | Service Code | Quota Name | Value | Usage |")
-		fmt.Println("|------------|-------|--------------|------------|-------|-------|")
-	case "table", "json": // For table and json, we do nothing in the header.
+		fmt.Println("| Account ID | Region | Service Code | Global | Value | Usage | Quota Name |")
+		fmt.Println("|------------|--------|--------------|-------|-------|-------|------------|")
+	case "table", "json":
+		fmt.Printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s\n", accountWidth, "Account ID", regionWidth, "Region", serviceWidth, "Service", globalQuotaWidth, "Global", valueWidth, "Value", usageWidth, "Usage", nameWidth, "Quota Name")
 	default:
 		fmt.Fprintf(os.Stderr, "Unsupported format: %s\n", outputFormat)
 		os.Exit(1)
 	}
 }
 
-func printQuota(accountID, region, serviceCode, QuotaName, Value, Usage string) {
+func printQuota(accountID, region, serviceCode, QuotaName, Value, Usage, GlobalQuota string) {
 	// Define orange color
 	orange := color.New(color.FgYellow).SprintFunc()
 
 	switch outputFormat {
 	case "csv":
-		fmt.Printf("%s,%s,%s,%s,%s,%s\n", accountID, region, serviceCode, QuotaName, Value, Usage)
+		fmt.Printf("%s,%s,%s,%s,%s,%s,%s\n", accountID, region, serviceCode, GlobalQuota, Value, Usage, QuotaName)
 	case "markdown":
-		fmt.Printf("| %s | %s | %s | %s | %s | %s |\n", accountID, region, serviceCode, QuotaName, Value, Usage)
+		fmt.Printf("| %s | %s | %s | %s | %s | %s | %s |\n", accountID, region, serviceCode, GlobalQuota, Value, Usage, QuotaName)
 	case "table":
 		if Usage == "Not Available" {
 			// If Usage is "Not Available", print the row in orange
-			fmt.Printf("%s\n", orange(fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s", accountWidth, accountID, regionWidth, region, serviceWidth, serviceCode, nameWidth, QuotaName, valueWidth, Value, usageWidth, Usage)))
+			fmt.Printf("%s\n", orange(fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s", accountWidth, accountID, regionWidth, region, serviceWidth, serviceCode, globalQuotaWidth, GlobalQuota, valueWidth, Value, usageWidth, Usage, nameWidth, QuotaName)))
 		} else {
-			fmt.Printf("%-*s %-*s %-*s %-*s %-*s %-*s\n", accountWidth, accountID, regionWidth, region, serviceWidth, serviceCode, nameWidth, QuotaName, valueWidth, Value, usageWidth, Usage)
+			fmt.Printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s\n", accountWidth, accountID, regionWidth, region, serviceWidth, serviceCode, globalQuotaWidth, GlobalQuota, valueWidth, Value, usageWidth, Usage, nameWidth, QuotaName)
 		}
 	case "json":
 		// For json, we'll handle the output in the main function.
@@ -421,4 +459,12 @@ func listSupportedServices() {
 	for _, service := range services {
 		fmt.Printf("%s (%s)\n", *service.ServiceName, *service.ServiceCode)
 	}
+}
+
+func isOutputRedirected() bool {
+	fileInfo, err := os.Stdout.Stat()
+	if err != nil {
+		panic(err)
+	}
+	return (fileInfo.Mode() & os.ModeCharDevice) == 0
 }
