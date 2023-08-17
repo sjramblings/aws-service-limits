@@ -61,11 +61,6 @@ func init() {
 		fmt.Fprintf(os.Stderr, "The tool fetches and displays service quotas for AWS services.\n")
 		fmt.Fprintf(os.Stderr, "\nGetting started:\n\n")
 		fmt.Println("  # Fetch and display AWS service quotas for EC2")
-		// Resolve these errors
-		fmt.Fprintf(os.Stderr, "Usage:\n")
-		fmt.Fprintf(os.Stderr, "  aws-service-limits [flags]\n\n")
-		fmt.Fprintf(os.Stderr, "Available Flags:\n")
-		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "Usage:\n")
 		fmt.Fprintf(os.Stderr, "  aws-service-limits [flags]\n\n")
 		fmt.Fprintf(os.Stderr, "Available Flags:\n")

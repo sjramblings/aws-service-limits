@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
 )
@@ -24,8 +23,8 @@ func getUsageMetric(serviceCode, quotaCode string) (*servicequotas.GetAWSDefault
 
 	// Prepare the input for the GetAWSDefaultServiceQuota API call
 	input := &servicequotas.GetAWSDefaultServiceQuotaInput{
-		ServiceCode: aws.String(serviceCode),
-		QuotaCode:   aws.String(quotaCode),
+		ServiceCode: &serviceCode,
+		QuotaCode:   &quotaCode,
 	}
 
 	var result *servicequotas.GetAWSDefaultServiceQuotaOutput
@@ -46,5 +45,5 @@ func getUsageMetric(serviceCode, quotaCode string) (*servicequotas.GetAWSDefault
 		}
 	}
 
-	return result, err
+	return result, nil
 }
