@@ -163,7 +163,7 @@ func main() {
 		writer.Write([]string{"Account ID", "Region", "Service Code", "Quota Name", "Value", "Usage", "Global"})
 		for _, qi := range quotaInfos {
 			globalQuotaStr := fmt.Sprintf("%t", qi.GlobalQuota) // Convert the boolean to string
-			writer.Write([]string{qi.AccountID, qi.Region, qi.ServiceCode, qi.QuotaName, qi.Value, qi.Usage, globalQuotaStr})
+			writer.Write([]string{qi.AccountID, qi.Region, qi.ServiceCode, globalQuotaStr, qi.Value, qi.Usage, qi.QuotaName})
 		}
 		writer.Flush()
 	} else {
@@ -171,7 +171,7 @@ func main() {
 		printHeader()
 		for _, qi := range quotaInfos {
 			globalQuotaStr := fmt.Sprintf("%t", qi.GlobalQuota) // Convert the boolean to string
-			printQuota(qi.AccountID, qi.Region, qi.ServiceCode, qi.QuotaName, qi.Value, qi.Usage, globalQuotaStr)
+			printQuota(qi.AccountID, qi.Region, qi.ServiceCode, globalQuotaStr, qi.Value, qi.Usage, qi.QuotaName)
 		}
 	}
 }
