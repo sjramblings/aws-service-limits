@@ -31,7 +31,7 @@ func printHeader() {
 	}
 }
 
-func printQuota(accountID, region, serviceCode, QuotaName, Value, Usage, GlobalQuota string) {
+func printQuota(accountID, region, serviceCode, GlobalQuota, Value, Usage, QuotaName string) {
 	// Define orange color
 	orange := color.New(color.FgYellow).SprintFunc()
 
