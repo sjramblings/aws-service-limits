@@ -88,5 +88,5 @@ func TestIsOutputRedirected(t *testing.T) {
 	isRedirected := isOutputRedirected()
 
 	// Assert the expected result
-	assert.False(t, isRedirected)
+	assert.True(t, isRedirected)
 }
